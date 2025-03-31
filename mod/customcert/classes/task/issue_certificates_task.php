@@ -45,7 +45,7 @@ class issue_certificates_task extends \core\task\scheduled_task {
      * Execute.
      */
     public function execute() {
-        global $DB;
+        global $CFG, $DB;
 
         // Get the certificatesperrun, includeinnotvisiblecourses, and certificateexecutionperiod configurations.
         $certificatesperrun = (int)get_config('customcert', 'certificatesperrun');
@@ -53,10 +53,19 @@ class issue_certificates_task extends \core\task\scheduled_task {
         $certificateexecutionperiod = (int)get_config('customcert', 'certificateexecutionperiod');
         $offset = (int)get_config('customcert', 'certificate_offset');
 
-        // We are going to issue certificates that have requested someone get emailed.
+        if ($CFG->dbtype === 'oci') {
+            // For Oracle, convert the CLOB to a VARCHAR2 (limiting to 4000 characters) since we are using DISTINCT.
+            $emailothersselect = "DBMS_LOB.SUBSTR(c.emailothers, 4000, 1) AS emailothers";
+            $emailotherslengthsql = "DBMS_LOB.GETLENGTH(c.emailothers)";
+        } else {
+            $emailothersselect = "c.emailothers";
+            $emailotherslengthsql = $DB->sql_length('c.emailothers');
+        }
+
         $emailotherslengthsql = $DB->sql_length('c.emailothers');
-        $sql = "SELECT c.*, ct.id as templateid, ct.name as templatename, ct.contextid, co.id as courseid,
-                       co.fullname as coursefullname, co.shortname as courseshortname
+        $sql = "SELECT DISTINCT c.id, c.templateid, c.course, c.requiredtime, c.emailstudents, c.emailteachers, $emailothersselect,
+                       ct.id AS templateid, ct.name AS templatename, ct.contextid, co.id AS courseid,
+                       co.fullname AS coursefullname, co.shortname AS courseshortname
                   FROM {customcert} c
                   JOIN {customcert_templates} ct
                     ON c.templateid = ct.id
@@ -65,12 +74,10 @@ class issue_certificates_task extends \core\task\scheduled_task {
                   JOIN {course_categories} cat
                     ON co.category = cat.id
              LEFT JOIN {customcert_issues} ci
-                    ON c.id = ci.customcertid";
-
-        // Add conditions to exclude certificates from hidden courses.
-        $sql .= " WHERE (c.emailstudents = :emailstudents
-                     OR c.emailteachers = :emailteachers
-                     OR $emailotherslengthsql >= 3)";
+                    ON c.id = ci.customcertid
+                 WHERE (c.emailstudents = :emailstudents
+                    OR c.emailteachers = :emailteachers
+                    OR $emailotherslengthsql >= 3)";
 
         $params = ['emailstudents' => 1, 'emailteachers' => 1];
 
@@ -83,12 +90,10 @@ class issue_certificates_task extends \core\task\scheduled_task {
         // Add condition based on certificate execution period.
         if ($certificateexecutionperiod > 0) {
             // Include courses with no end date or end date greater than the specified period.
-            $sql .= " AND (co.enddate > :enddate OR (co.enddate = 0 AND ci.timecreated > :enddate2))";
+            $sql .= " AND (co.enddate > :enddate OR (co.enddate = 0 AND (ci.timecreated > :enddate2 OR ci.timecreated IS NULL)))";
             $params['enddate'] = time() - $certificateexecutionperiod;
             $params['enddate2'] = $params['enddate'];
         }
-
-        $sql .= " GROUP BY c.id, ct.id, ct.name, ct.contextid, co.id, co.fullname, co.shortname";
 
         // Execute the SQL query.
         $customcerts = $DB->get_records_sql($sql, $params, $offset, $certificatesperrun);
@@ -145,19 +150,26 @@ class issue_certificates_task extends \core\task\scheduled_task {
             // Users with both mod/customcert:view and mod/customcert:receiveissue cabapilities.
             $userswithissueview = array_intersect_key($userswithissue, $userswithview);
 
-            foreach ($userswithissueview as $enroluser) {
+            // Filter the remaining users by determining whether they can actually see the CM or not
+            // (Note: filter_user_list only takes into account those availability condition which actually implement
+            // this function, so the second check with get_fast_modinfo must be still performed - but we can reduce the
+            // size of the users list here already).
+            $infomodule = new \core_availability\info_module($cm);
+            $filteredusers = $infomodule->filter_user_list($userswithissueview);
+
+            foreach ($filteredusers as $filtereduser) {
                 // Check if the user has already been issued and emailed.
-                if (in_array($enroluser->id, array_keys((array)$issuedusers))) {
+                if (in_array($filtereduser->id, array_keys((array)$issuedusers))) {
                     continue;
                 }
 
                 // Don't want to issue to teachers.
-                if (in_array($enroluser->id, array_keys((array)$userswithmanage))) {
+                if (in_array($filtereduser->id, array_keys((array)$userswithmanage))) {
                     continue;
                 }
 
                 // Now check if the certificate is not visible to the current user.
-                $cm = get_fast_modinfo($customcert->courseid, $enroluser->id)->instances['customcert'][$customcert->id];
+                $cm = get_fast_modinfo($customcert->courseid, $filtereduser->id)->instances['customcert'][$customcert->id];
                 if (!$cm->uservisible) {
                     continue;
                 }
@@ -165,18 +177,18 @@ class issue_certificates_task extends \core\task\scheduled_task {
                 // Check that they have passed the required time.
                 if (!empty($customcert->requiredtime)) {
                     if (\mod_customcert\certificate::get_course_time($customcert->courseid,
-                            $enroluser->id) < ($customcert->requiredtime * 60)) {
+                            $filtereduser->id) < ($customcert->requiredtime * 60)) {
                         continue;
                     }
                 }
 
                 // Ensure the cert hasn't already been issued, e.g via the UI (view.php) - a race condition.
                 $issue = $DB->get_record('customcert_issues',
-                    ['userid' => $enroluser->id, 'customcertid' => $customcert->id], 'id, emailed');
+                    ['userid' => $filtereduser->id, 'customcertid' => $customcert->id], 'id, emailed');
 
                 // Ok, issue them the certificate.
                 $issueid = empty($issue) ?
-                    \mod_customcert\certificate::issue_certificate($customcert->id, $enroluser->id) : $issue->id;
+                    \mod_customcert\certificate::issue_certificate($customcert->id, $filtereduser->id) : $issue->id;
 
                 // Validate issueid and one last check for emailed.
                 if (!empty($issueid) && empty($issue->emailed)) {
