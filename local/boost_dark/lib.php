@@ -56,22 +56,23 @@ function local_boost_dark_render_navbar_output(renderer_base $renderer) {
     $theme = isset($_SESSION["SESSION"]->theme) ? $_SESSION["SESSION"]->theme : $CFG->theme;
 
     // Native support.
-    if ($theme == "boost_magnific" || $theme == "degrade") {
+    if ($theme == "boost_magnific" || $theme == "degrade" || $theme == "eadflix") {
         return "";
     }
 
-    // Upon request, I have removed support.
-    if ($theme == "union") {
-        $message = "The union theme is not compatible with the Local Boost Dark plugin. " .
-            "To resolve this incompatibility, please remove the <b>local_boost_dark</b> " .
-            "plugin or choose a different theme that works properly with the plugin.";
-        \core\notification::add($message, notification::NOTIFY_ERROR);
-        return "";
-    }
+    // // Upon request, I have removed support.
+    // if ($theme == "moove") {
+    //     $message = "The Moove theme is not compatible with the Local Boost Dark plugin. " .
+    //         "To resolve this incompatibility, please remove the <b>local_boost_dark</b> " .
+    //         "plugin or choose a different theme that works properly with the plugin.";
+    //     \core\notification::add($message, notification::NOTIFY_ERROR);
+    //     return "";
+    // }
 
-    return $renderer->render_from_template("local_boost_dark/dark-icon", [
-        "enable" => get_config("local_boost_dark", "enable"),
-    ]);
+    return $renderer->render_from_template(
+        "local_boost_dark/dark-icon",
+        ["enable" => get_config("local_boost_dark", "enable")]
+    );
 }
 
 /**
