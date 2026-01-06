@@ -60,8 +60,14 @@ function local_boost_dark_render_navbar_output(renderer_base $renderer) {
         return "";
     }
 
-        return "";
-    }
+    // Upon request, I have removed support.
+    // if ($theme == "moove") {
+    //     $message = "The Moove theme is not compatible with the Local Boost Dark plugin. " .
+    //         "To resolve this incompatibility, please remove the <b>local_boost_dark</b> " .
+    //         "plugin or choose a different theme that works properly with the plugin.";
+    //     \core\notification::add($message, notification::NOTIFY_ERROR);
+    //     return "";
+    // }
 
     return $renderer->render_from_template(
         "local_boost_dark/dark-icon",
