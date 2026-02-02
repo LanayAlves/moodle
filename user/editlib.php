@@ -307,11 +307,11 @@ function useredit_shared_definition(&$mform, $editoroptions, $filemanageroptions
         $mform->addHelpButton('moodlenetprofile', 'moodlenetprofile', 'user');
     }
 
-    $mform->addElement('text', 'city', get_string('city'), 'maxlength="120" size="21"');
+    /*$mform->addElement('text', 'city', get_string('city'), 'maxlength="120" size="21"');
     $mform->setType('city', PARAM_TEXT);
     if (!empty($CFG->defaultcity)) {
         $mform->setDefault('city', $CFG->defaultcity);
-    }
+    }*/
 
     $purpose = user_edit_map_field_purpose($user->id, 'country');
     $choices = get_string_manager()->get_list_of_countries();
