@@ -311,15 +311,15 @@ function useredit_shared_definition(&$mform, $editoroptions, $filemanageroptions
     $mform->setType('city', PARAM_TEXT);
     if (!empty($CFG->defaultcity)) {
         $mform->setDefault('city', $CFG->defaultcity);
-    }*/
+    }
 
-    $purpose = user_edit_map_field_purpose($user->id, 'country');
+    /*$purpose = user_edit_map_field_purpose($user->id, 'country');
     $choices = get_string_manager()->get_list_of_countries();
     $choices = array('' => get_string('selectacountry') . '...') + $choices;
     $mform->addElement('select', 'country', get_string('selectacountry'), $choices, $purpose);
     if (!empty($CFG->country)) {
         $mform->setDefault('country', core_user::get_property_default('country'));
-    }
+    }*/
 
     if (isset($CFG->forcetimezone) and $CFG->forcetimezone != 99) {
         $choices = core_date::get_list_of_timezones($CFG->forcetimezone);
